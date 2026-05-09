@@ -1,0 +1,66 @@
+{
+  "name": "vuesortable",
+  "version": "0.1.0",
+  "description": "Unstyled sortable primitives for Vue 3.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Guillem Servera",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/guillemservera/vuesortable.git"
+  },
+  "bugs": {
+    "url": "https://github.com/guillemservera/vuesortable/issues"
+  },
+  "homepage": "https://github.com/guillemservera/vuesortable#readme",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "peerDependencies": {
+    "vue": "^3.5.0"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.2.4",
+    "@types/node": "^22.15.17",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.5",
+    "vite-plugin-dts": "^4.5.4",
+    "vitest": "^3.1.3",
+    "vue": "^3.5.13",
+    "vue-tsc": "^2.2.10"
+  },
+  "keywords": [
+    "vue",
+    "vue3",
+    "sortable",
+    "sorting",
+    "drag-and-drop",
+    "reorder",
+    "unstyled",
+    "headless",
+    "primitive"
+  ],
+  "scripts": {
+    "dev": "pnpm --filter @vuesortable/playground dev",
+    "build": "vue-tsc --noEmit && vite build",
+    "typecheck": "vue-tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pack:dry": "npm pack --dry-run"
+  }
+}
