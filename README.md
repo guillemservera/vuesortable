@@ -169,6 +169,8 @@ export type * from './types'
 
 `class` and `style` are normal Vue attrs and are applied to the root element. They are not typed as props.
 
+`as` controls the outer coordinate container, not the list element. Render your semantic list inside the default slot and bind `listAttrs` to it.
+
 `behavior` is intentionally limited to `insert` in `0.1.0`. Swap behavior is reserved for a future release.
 
 ### Events

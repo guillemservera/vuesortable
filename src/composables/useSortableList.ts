@@ -787,6 +787,8 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
       attrs: {
         [DATA_ATTRIBUTES.placeholder]: entry.activeKey,
         [DATA_ATTRIBUTES.motionKey]: entry.key,
+        'aria-hidden': 'true',
+        role: 'presentation',
       },
       style: placeholderStyle(entry),
     }
@@ -809,6 +811,7 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
       attrs: {
         [DATA_ATTRIBUTES.overlay]: '',
         [DATA_ATTRIBUTES.overlayKey]: overlay.key,
+        'aria-hidden': 'true',
         'data-vuesortable-dragging': isSorting.value ? 'true' : 'false',
         'data-vuesortable-dropping': dropState.value?.dropping ? 'true' : 'false',
       },

@@ -336,6 +336,9 @@ describe('Sortable', () => {
     expect(wrapper.find('[data-vuesortable-placeholder="one"]').exists()).toBe(true)
     expect(wrapper.find('[data-vuesortable-overlay-key="one"]').exists()).toBe(true)
     expect(wrapper.find('[data-vuesortable-item-key="one"]').exists()).toBe(false)
+    expect(wrapper.get('[data-vuesortable-placeholder="one"]').attributes('aria-hidden')).toBe('true')
+    expect(wrapper.get('[data-vuesortable-placeholder="one"]').attributes('role')).toBe('presentation')
+    expect(wrapper.get('[data-vuesortable-overlay]').attributes('aria-hidden')).toBe('true')
     expect(wrapper.get('[data-vuesortable-overlay]').attributes('style')).toContain('translate3d(4px, 92px, 0)')
   })
 
