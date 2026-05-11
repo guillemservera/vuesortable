@@ -1,9 +1,9 @@
 import { mount } from '@vue/test-utils'
 import type { VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
+import { h, nextTick } from 'vue'
 import Sortable from '../src/components/Sortable.vue'
-import type { SortableProps } from '../src/types'
+import type { SortableDefaultSlotProps, SortableProps } from '../src/types'
 
 type Item = {
   id: string
@@ -19,12 +19,12 @@ type MockItemRect = {
 
 type MountedSortable = VueWrapper<unknown>
 
-const itemSlot = `
-  <div v-bind="attrs" class="row">
-    <button v-bind="handleAttrs" type="button" data-test-handle>Grab</button>
-    <span>{{ element.label }}</span>
-  </div>
-`
+type SlotOptions = {
+  itemClass?: string
+  listContainerClass?: string
+  listStyle?: Record<string, string>
+  overlayClass?: string
+}
 
 function pointerEvent(type: string, options: MouseEventInit) {
   return new MouseEvent(type, {
@@ -46,6 +46,66 @@ function rectFrom(input: { top: number, left: number, width: number, height: num
     y: input.top,
     toJSON: () => ({}),
   } as DOMRect
+}
+
+function renderDefaultSlot(options: SlotOptions = {}) {
+  return (slotProps: SortableDefaultSlotProps<Item>) => {
+    const list = h(
+      'div',
+      {
+        ...slotProps.listAttrs,
+        class: options.listContainerClass,
+        style: options.listStyle,
+      },
+      slotProps.entries.map((entry) => {
+        if (entry.type === 'placeholder') {
+          const placeholder = slotProps.getPlaceholderAttrs(entry)
+
+          return h('div', {
+            ...placeholder.attrs,
+            class: 'placeholder',
+            style: placeholder.style,
+          })
+        }
+
+        const item = slotProps.getItemAttrs(entry)
+
+        return h(
+          'div',
+          {
+            ...item.attrs,
+            class: ['row', options.itemClass],
+          },
+          [
+            h(
+              'button',
+              {
+                ...slotProps.getHandleAttrs(entry),
+                'data-test-handle': '',
+                type: 'button',
+              },
+              'Grab',
+            ),
+            h('span', entry.element.label),
+          ],
+        )
+      }),
+    )
+
+    const overlay = slotProps.overlay
+      ? h(
+          'div',
+          {
+            ...slotProps.overlay.attrs,
+            class: ['overlay-row', options.overlayClass],
+            style: slotProps.overlay.style,
+          },
+          slotProps.overlay.element.label,
+        )
+      : null
+
+    return [list, overlay]
+  }
 }
 
 function mockRootRect(wrapper: MountedSortable, rect: { top: number, left: number, width: number, height: number }) {
@@ -117,9 +177,10 @@ function listChildOrder(wrapper: MountedSortable) {
 function mountSortable(
   items: Item[],
   options: {
+    attachTo?: HTMLElement
+    attrs?: Record<string, unknown>
     props?: Partial<SortableProps<Item>>
-    slot?: string
-    slots?: Record<string, string>
+    slot?: SlotOptions
   } = {},
 ) {
   let wrapper!: MountedSortable
@@ -131,9 +192,10 @@ function mountSortable(
       'onUpdate:modelValue': (value: Item[]) => wrapper.setProps({ modelValue: value }),
       ...options.props,
     },
+    attrs: options.attrs,
+    attachTo: options.attachTo,
     slots: {
-      item: options.slot ?? itemSlot,
-      ...options.slots,
+      default: renderDefaultSlot(options.slot),
     },
   })
 
@@ -143,10 +205,11 @@ function mountSortable(
 afterEach(() => {
   vi.useRealTimers()
   document.documentElement.removeAttribute('style')
+  document.body.innerHTML = ''
 })
 
 describe('Sortable', () => {
-  it('renders the root, list, and items', () => {
+  it('renders the root and the user-owned default-slot list', () => {
     const wrapper = mountSortable([
       { id: 'one', label: 'One' },
       { id: 'two', label: 'Two' },
@@ -159,22 +222,93 @@ describe('Sortable', () => {
     expect(wrapper.text()).toContain('Two')
   })
 
-  it('applies class to the root and listClass to the list', () => {
+  it('applies class to the root through Vue attrs', () => {
     const wrapper = mountSortable(
       [
         { id: 'one', label: 'One' },
         { id: 'two', label: 'Two' },
       ],
       {
-        props: {
+        attrs: {
           class: 'sortable-root',
-          listClass: 'sortable-list',
         },
       },
     )
 
     expect(wrapper.get('[data-vuesortable-root]').classes()).toContain('sortable-root')
-    expect(wrapper.get('[data-vuesortable-list]').classes()).toContain('sortable-list')
+  })
+
+  it('lets the user render the list with a scoped class', () => {
+    const wrapper = mountSortable(
+      [
+        { id: 'one', label: 'One' },
+        { id: 'two', label: 'Two' },
+      ],
+      {
+        slot: {
+          listContainerClass: 'lane',
+        },
+      },
+    )
+
+    expect(wrapper.get('[data-vuesortable-list]').classes()).toContain('lane')
+  })
+
+  it('adds accessible list, item, handle, keyboard, and live-region attributes', () => {
+    const wrapper = mountSortable([
+      { id: 'one', label: 'One' },
+      { id: 'two', label: 'Two' },
+    ])
+
+    const firstItem = wrapper.get('[data-vuesortable-item-key="one"]')
+    const firstHandle = wrapper.get('[data-test-handle]')
+
+    expect(wrapper.get('[data-vuesortable-list]').attributes('role')).toBe('list')
+    expect(firstItem.attributes('role')).toBe('listitem')
+    expect(firstItem.attributes('aria-posinset')).toBe('1')
+    expect(firstItem.attributes('aria-setsize')).toBe('2')
+    expect(firstHandle.attributes('aria-label')).toBe('Reorder one')
+    expect(firstHandle.attributes('aria-keyshortcuts')).toBe('ArrowUp ArrowDown ArrowLeft ArrowRight Home End')
+    expect(firstHandle.attributes('aria-roledescription')).toBe('sortable handle')
+    expect(firstHandle.attributes('tabindex')).toBe('0')
+    expect(wrapper.get('[data-vuesortable-live-region]').attributes('role')).toBe('status')
+    expect(wrapper.get('[data-vuesortable-live-region]').attributes('aria-live')).toBe('polite')
+  })
+
+  it('reorders with keyboard shortcuts, announces the move, and restores handle focus', async () => {
+    const host = document.createElement('div')
+    document.body.append(host)
+    const wrapper = mountSortable(
+      [
+        { id: 'one', label: 'One' },
+        { id: 'two', label: 'Two' },
+        { id: 'three', label: 'Three' },
+      ],
+      {
+        attachTo: host,
+      },
+    )
+
+    const handle = wrapper.get('[data-test-handle]')
+    ;(handle.element as HTMLElement).focus()
+
+    await handle.trigger('keydown', { key: 'ArrowDown' })
+    await nextTick()
+    await nextTick()
+
+    expect(wrapper.emitted('update:modelValue')?.[0]?.[0]).toEqual([
+      { id: 'two', label: 'Two' },
+      { id: 'one', label: 'One' },
+      { id: 'three', label: 'Three' },
+    ])
+    expect(wrapper.emitted('reorder')?.[0]?.[0]).toEqual({
+      from: 0,
+      item: { id: 'one', label: 'One' },
+      key: 'one',
+      to: 1,
+    })
+    expect(wrapper.get('[data-vuesortable-live-region]').text()).toBe('Moved one from position 1 to 2.')
+    expect(document.activeElement).toBe(getSortableItemElement(wrapper, 'one').querySelector('[data-vuesortable-handle]'))
   })
 
   it('drags vertically and clamps the overlay inside the root', async () => {
@@ -205,7 +339,7 @@ describe('Sortable', () => {
     expect(wrapper.get('[data-vuesortable-overlay]').attributes('style')).toContain('translate3d(4px, 92px, 0)')
   })
 
-  it('drags horizontally and clamps the overlay inside the root', async () => {
+  it('drags horizontally with a user-owned flex list', async () => {
     const wrapper = mountSortable(
       [
         { id: 'one', label: 'One' },
@@ -215,6 +349,12 @@ describe('Sortable', () => {
       {
         props: {
           orientation: 'horizontal',
+        },
+        slot: {
+          listContainerClass: 'lane',
+          listStyle: {
+            display: 'flex',
+          },
         },
       },
     )
@@ -234,6 +374,8 @@ describe('Sortable', () => {
     document.dispatchEvent(pointerEvent('pointermove', { clientX: 240, clientY: -240 }))
     await nextTick()
 
+    expect(wrapper.get('[data-vuesortable-list]').classes()).toContain('lane')
+    expect((wrapper.get('[data-vuesortable-list]').element as HTMLElement).style.display).toBe('flex')
     expect(wrapper.get('[data-vuesortable-placeholder="one"]').attributes('style')).toContain('width: 40px')
     expect(wrapper.get('[data-vuesortable-overlay]').attributes('style')).toContain('translate3d(92px, 4px, 0)')
   })
@@ -272,7 +414,7 @@ describe('Sortable', () => {
     expect(wrapper.get('[data-vuesortable-placeholder="one"]').attributes('style')).toContain('width: 40px')
   })
 
-  it('renders the overlay outside the normal-flow list', async () => {
+  it('renders the overlay outside the normal-flow list but inside the root', async () => {
     const wrapper = mountSortable([
       { id: 'one', label: 'One' },
       { id: 'two', label: 'Two' },
@@ -561,7 +703,7 @@ describe('Sortable', () => {
     expect(wrapper.find('[data-vuesortable-overlay]').exists()).toBe(false)
   })
 
-  it('lets canMove block a reorder', async () => {
+  it('lets canMove block a pointer reorder and a keyboard reorder', async () => {
     vi.useFakeTimers()
     const wrapper = mountSortable(
       [
@@ -574,6 +716,13 @@ describe('Sortable', () => {
         },
       },
     )
+
+    await wrapper.get('[data-test-handle]').trigger('keydown', { key: 'ArrowDown' })
+    await nextTick()
+
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    expect(wrapper.emitted('reorder')).toBeUndefined()
+    expect(wrapper.get('[data-vuesortable-live-region]').text()).toBe('Could not move one.')
 
     mockRootRect(wrapper, { top: 100, left: 40, width: 320, height: 88 })
     mockItemRects(wrapper, {

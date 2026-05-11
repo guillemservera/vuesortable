@@ -4,11 +4,9 @@ import type { SortableProps } from '../types'
 import { DEFAULT_IGNORE_SELECTOR, DEFAULT_MOTION } from '../constants'
 import { useSortableList } from '../composables/useSortableList'
 import type {
+  SortableDefaultSlotProps,
   SortableDragPayload,
-  SortableItemSlotProps,
   SortableMovePayload,
-  SortableOverlaySlotProps,
-  SortablePlaceholderSlotProps,
 } from '../types'
 
 defineOptions({
@@ -37,9 +35,7 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
-  item(props: SortableItemSlotProps<T>): unknown
-  overlay?(props: SortableOverlaySlotProps<T>): unknown
-  placeholder?(props: SortablePlaceholderSlotProps): unknown
+  default(props: SortableDefaultSlotProps<T>): unknown
 }>()
 
 const attrs = useAttrs()
@@ -63,8 +59,7 @@ const sortable = useSortableList<T>({
   rootRef,
 })
 
-const rootClass = computed(() => [normalizeClass(attrs.class), normalizeClass(props.class)])
-const listClass = computed(() => normalizeClass(props.listClass))
+const rootClass = computed(() => normalizeClass(attrs.class))
 const rootStyle = computed(() => [attrs.style, sortable.rootStyle])
 
 defineExpose({
@@ -86,55 +81,16 @@ defineExpose({
     :style="rootStyle"
     data-vuesortable-root
   >
-    <div
-      :class="listClass"
-      data-vuesortable-list
-    >
-      <template
-        v-for="entry in sortable.layoutEntries.value"
-        :key="entry.key"
-      >
-        <slot
-          v-if="entry.type === 'placeholder'"
-          name="placeholder"
-          v-bind="sortable.getPlaceholderSlotProps(entry)"
-        >
-          <div
-            v-bind="sortable.getPlaceholderSlotProps(entry).attrs"
-            :style="sortable.getPlaceholderSlotProps(entry).style"
-          />
-        </slot>
-
-        <slot
-          v-else
-          name="item"
-          v-bind="sortable.getItemSlotProps(entry)"
-        >
-          <div v-bind="sortable.getItemSlotProps(entry).attrs">
-            {{ entry.element }}
-          </div>
-        </slot>
-      </template>
-    </div>
+    <slot v-bind="sortable.getDefaultSlotProps()" />
 
     <div
-      v-if="sortable.overlayState.value"
-      v-bind="sortable.getOverlaySlotProps(sortable.overlayState.value).attrs"
-      :style="sortable.getOverlaySlotProps(sortable.overlayState.value).style"
+      :style="sortable.liveRegionStyle"
+      aria-atomic="true"
+      aria-live="polite"
+      data-vuesortable-live-region
+      role="status"
     >
-      <slot
-        name="overlay"
-        v-bind="sortable.getOverlaySlotProps(sortable.overlayState.value)"
-      >
-        <slot
-          name="item"
-          v-bind="sortable.getOverlayFallbackItemSlotProps(sortable.overlayState.value)"
-        >
-          <div v-bind="sortable.getOverlayFallbackItemSlotProps(sortable.overlayState.value).attrs">
-            {{ sortable.overlayState.value.element }}
-          </div>
-        </slot>
-      </slot>
+      {{ sortable.announcement.value }}
     </div>
   </component>
 </template>

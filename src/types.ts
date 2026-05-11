@@ -50,8 +50,6 @@ export type SortableProps<T = unknown> = {
   ignore?: string
   motion?: SortableMotion
   canMove?: (payload: SortableCanMovePayload<T>) => boolean
-  class?: unknown
-  listClass?: unknown
 }
 
 export type SortableDragPayload<T = unknown> = {
@@ -66,47 +64,50 @@ export type SortableMovePayload<T = unknown> = SortableDragPayload<T> & {
   pointer: { x: number, y: number }
 }
 
-export type SortableSlotAttrs = Record<string, unknown>
-
-export type SortableItemSlotProps<T = unknown> = {
-  element: T
-  index: number
-  active: boolean
-  dragging: boolean
-  attrs: SortableSlotAttrs
-  handleAttrs: SortableSlotAttrs
-}
-
-export type SortableOverlaySlotProps<T = unknown> = {
-  element: T
-  index: number
-  dragging: boolean
-  attrs: SortableSlotAttrs
-  style: CSSProperties
-}
-
-export type SortablePlaceholderSlotProps = {
-  key: string
-  attrs: SortableSlotAttrs
-  style: CSSProperties
-}
-
-export type SortableEntry<T = unknown> = {
+export type SortableItemEntry<T = unknown> = {
   element: T
   index: number
   key: string
+  type: 'item'
 }
 
 export type SortablePlaceholderEntry = {
+  activeKey: string
   height: number
   key: string
   type: 'placeholder'
   width: number
-  activeKey: string
 }
 
-export type SortableItemEntry<T = unknown> = SortableEntry<T> & {
-  type: 'item'
+export type SortableRenderEntry<T = unknown> = SortableItemEntry<T> | SortablePlaceholderEntry
+
+export type SortableListAttrs = Record<string, unknown>
+
+export type SortableItemAttrsResult = {
+  attrs: Record<string, unknown>
 }
 
-export type SortableLayoutEntry<T = unknown> = SortableItemEntry<T> | SortablePlaceholderEntry
+export type SortablePlaceholderAttrsResult = {
+  attrs: Record<string, unknown>
+  style: CSSProperties
+}
+
+export type SortableOverlayRenderState<T = unknown> = {
+  element: T
+  index: number
+  key: string
+  dragging: boolean
+  attrs: Record<string, unknown>
+  style: CSSProperties
+}
+
+export type SortableDefaultSlotProps<T = unknown> = {
+  entries: SortableRenderEntry<T>[]
+  dragging: boolean
+  dropping: boolean
+  listAttrs: SortableListAttrs
+  getItemAttrs: (entry: SortableItemEntry<T>) => SortableItemAttrsResult
+  getHandleAttrs: (entry: SortableItemEntry<T>) => Record<string, unknown>
+  getPlaceholderAttrs: (entry: SortablePlaceholderEntry) => SortablePlaceholderAttrsResult
+  overlay: SortableOverlayRenderState<T> | null
+}

@@ -26,13 +26,14 @@ export const DATA_ATTRIBUTES = {
   motionKey: 'data-vuesortable-motion-key',
   overlay: 'data-vuesortable-overlay',
   overlayKey: 'data-vuesortable-overlay-key',
-  overlayItem: 'data-vuesortable-overlay-item',
   placeholder: 'data-vuesortable-placeholder',
   handle: 'data-vuesortable-handle',
+  liveRegion: 'data-vuesortable-live-region',
 } as const
 
 export const SELECTORS = {
   item: `[${DATA_ATTRIBUTES.item}]`,
   motion: `[${DATA_ATTRIBUTES.motionKey}]`,
   placeholder: `[${DATA_ATTRIBUTES.placeholder}]`,
+  handle: `[${DATA_ATTRIBUTES.handle}]`,
 } as const

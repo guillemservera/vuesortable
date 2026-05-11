@@ -15,16 +15,40 @@ const items = ref([
     v-model="items"
     item-key="id"
     orientation="horizontal"
-    list-class="lane"
+    v-slot="{ entries, listAttrs, getItemAttrs, getPlaceholderAttrs, overlay }"
   >
-    <template #item="{ element, attrs }">
-      <div
-        v-bind="attrs"
-        class="pill"
+    <div
+      v-bind="listAttrs"
+      class="lane"
+    >
+      <template
+        v-for="entry in entries"
+        :key="entry.key"
       >
-        {{ element.label }}
-      </div>
-    </template>
+        <div
+          v-if="entry.type === 'placeholder'"
+          v-bind="getPlaceholderAttrs(entry).attrs"
+          :style="getPlaceholderAttrs(entry).style"
+        />
+
+        <div
+          v-else
+          v-bind="getItemAttrs(entry).attrs"
+          class="pill"
+        >
+          {{ entry.element.label }}
+        </div>
+      </template>
+    </div>
+
+    <div
+      v-if="overlay"
+      v-bind="overlay.attrs"
+      :style="overlay.style"
+      class="pill"
+    >
+      {{ overlay.element.label }}
+    </div>
   </Sortable>
 </template>
 

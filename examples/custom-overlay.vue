@@ -13,23 +13,41 @@ const items = ref([
   <Sortable
     v-model="items"
     item-key="id"
+    v-slot="{ entries, listAttrs, getItemAttrs, getHandleAttrs, getPlaceholderAttrs, overlay }"
   >
-    <template #item="{ element, attrs, handleAttrs }">
-      <div v-bind="attrs">
-        <button
-          v-bind="handleAttrs"
-          type="button"
-        >
-          Grab
-        </button>
-        {{ element.label }}
-      </div>
-    </template>
+    <div v-bind="listAttrs">
+      <template
+        v-for="entry in entries"
+        :key="entry.key"
+      >
+        <div
+          v-if="entry.type === 'placeholder'"
+          v-bind="getPlaceholderAttrs(entry).attrs"
+          :style="getPlaceholderAttrs(entry).style"
+        />
 
-    <template #overlay="{ element, dragging }">
-      <div :data-dragging="dragging ? 'true' : 'false'">
-        {{ element.label }}
-      </div>
-    </template>
+        <div
+          v-else
+          v-bind="getItemAttrs(entry).attrs"
+        >
+          <button
+            v-bind="getHandleAttrs(entry)"
+            type="button"
+          >
+            Grab
+          </button>
+          {{ entry.element.label }}
+        </div>
+      </template>
+    </div>
+
+    <div
+      v-if="overlay"
+      v-bind="overlay.attrs"
+      :style="overlay.style"
+      :data-dragging="overlay.dragging ? 'true' : 'false'"
+    >
+      {{ overlay.element.label }}
+    </div>
   </Sortable>
 </template>

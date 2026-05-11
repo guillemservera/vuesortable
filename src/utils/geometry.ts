@@ -1,5 +1,5 @@
 import { PREVIEW_INDEX_BIAS_MAX, PREVIEW_INDEX_BIAS_RATIO } from '../constants'
-import type { SortableCollision, SortableEntry, SortableOrientation } from '../types'
+import type { SortableCollision, SortableItemEntry, SortableOrientation } from '../types'
 
 export type RootGeometry = {
   height: number
@@ -13,7 +13,7 @@ export type OverlayPosition = {
   y: number
 }
 
-export type MeasuredEntry<T = unknown> = SortableEntry<T> & {
+export type MeasuredEntry<T = unknown> = SortableItemEntry<T> & {
   centerX: number
   centerY: number
   height: number
@@ -44,7 +44,7 @@ export function getRootGeometry(root: HTMLElement, rootRect = root.getBoundingCl
 export function measureSortableLayout<T>(
   root: HTMLElement,
   rootRect: DOMRect,
-  entries: SortableEntry<T>[],
+  entries: SortableItemEntry<T>[],
   itemSelector: string,
 ) {
   const rootGeometry = getRootGeometry(root, rootRect)

@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, onBeforeUpdate, onUpdated, shallowRef } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onBeforeUpdate, onUpdated, shallowRef } from 'vue'
 import type { CSSProperties, Ref } from 'vue'
 import {
   DATA_ATTRIBUTES,
@@ -8,17 +8,18 @@ import {
 } from '../constants'
 import type {
   SortableCollision,
+  SortableDefaultSlotProps,
   SortableDragPayload,
-  SortableEntry,
-  SortableItemSlotProps,
-  SortableLayoutEntry,
+  SortableItemAttrsResult,
+  SortableItemEntry,
+  SortableListAttrs,
   SortableMovePayload,
   SortableOrientation,
-  SortableOverlaySlotProps,
+  SortableOverlayRenderState,
+  SortablePlaceholderAttrsResult,
   SortablePlaceholderEntry,
-  SortablePlaceholderSlotProps,
   SortableProps,
-  SortableSlotAttrs,
+  SortableRenderEntry,
 } from '../types'
 import { canUseDOM, isHTMLElement, safeClosest } from '../utils/dom'
 import {
@@ -61,7 +62,7 @@ type DragState<T> = OverlayState<T> & {
 
 type DropState<T> = OverlayState<T> & {
   dropping: boolean
-  entries: SortableEntry<T>[]
+  entries: SortableItemEntry<T>[]
   from: number
   item: T
   to: number
@@ -90,11 +91,21 @@ const INTERACTION_STYLE: CSSProperties = {
   touchAction: 'none',
 }
 
+const LIVE_REGION_STYLE: CSSProperties = {
+  clipPath: 'inset(50%)',
+  height: '1px',
+  overflow: 'hidden',
+  position: 'absolute',
+  whiteSpace: 'nowrap',
+  width: '1px',
+}
+
 export function useSortableList<T = unknown>(options: UseSortableListOptions<T>) {
   const { emit, props, rootRef } = options
 
   const dragState = shallowRef<DragState<T> | null>(null)
   const dropState = shallowRef<DropState<T> | null>(null)
+  const announcement = shallowRef('')
 
   let activationDelayTimer: number | null = null
   let dropAnimationFrame: number | null = null
@@ -110,15 +121,16 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
   const collision = computed<SortableCollision>(() => props.collision ?? 'biased-center')
   const motion = computed(() => normalizeMotion(props.motion))
 
-  const entries = computed<SortableEntry<T>[]>(() =>
+  const entries = computed<SortableItemEntry<T>[]>(() =>
     props.modelValue.map((element, index) => ({
       element,
       index,
       key: resolveItemKey(element),
+      type: 'item',
     })),
   )
 
-  const layoutEntries = computed<SortableLayoutEntry<T>[]>(() => {
+  const layoutEntries = computed<SortableRenderEntry<T>[]>(() => {
     const state = dragState.value
     if (state?.started) {
       return buildLayoutEntries(entries.value, state.key, state.previewIndex, state.height, state.width)
@@ -129,7 +141,7 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
       return buildLayoutEntries(dropping.entries, dropping.key, dropping.to, dropping.height, dropping.width)
     }
 
-    return entries.value.map(entry => ({ ...entry, type: 'item' }))
+    return entries.value
   })
 
   const overlayState = computed(() => {
@@ -181,12 +193,16 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
       .find(element => element.dataset.vuesortableItemKey === key) ?? null
   }
 
+  function getItemHandleElement(key: string) {
+    return getItemElement(key)?.querySelector<HTMLElement>(SELECTORS.handle) ?? null
+  }
+
   function shouldIgnoreTarget(target: EventTarget | null) {
     if (props.handle) return safeClosest(target, props.handle) === null
     return Boolean(safeClosest(target, props.ignore ?? DEFAULT_IGNORE_SELECTOR))
   }
 
-  function handlePointerDown(event: PointerEvent, entry: SortableEntry<T>, force = false) {
+  function handlePointerDown(event: PointerEvent, entry: SortableItemEntry<T>, force = false) {
     if (props.disabled || dropState.value || dragState.value || !canUseDOM()) return
     if (typeof event.button === 'number' && event.button !== 0) return
     if (!force && shouldIgnoreTarget(event.target)) return
@@ -374,6 +390,74 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
 
   function handlePointerCancel() {
     cleanupDrag(true)
+  }
+
+  function handleKeyboardMove(event: KeyboardEvent, entry: SortableItemEntry<T>) {
+    if (props.disabled || event.defaultPrevented) return
+    if (event.altKey || event.ctrlKey || event.metaKey) return
+
+    const to = getKeyboardTargetIndex(event.key, entry.index)
+    if (to === null) return
+
+    event.preventDefault()
+    reorderFromKeyboard(entry, to)
+  }
+
+  function getKeyboardTargetIndex(key: string, currentIndex: number) {
+    switch (key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        return clamp(currentIndex + 1, 0, entries.value.length - 1)
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        return clamp(currentIndex - 1, 0, entries.value.length - 1)
+      case 'Home':
+        return 0
+      case 'End':
+        return entries.value.length - 1
+      default:
+        return null
+    }
+  }
+
+  function reorderFromKeyboard(entry: SortableItemEntry<T>, targetIndex: number) {
+    if (targetIndex === entry.index) return
+
+    const payload: SortableDragPayload<T> = {
+      from: entry.index,
+      item: entry.element,
+      key: entry.key,
+      to: targetIndex,
+    }
+    const allowed = props.canMove?.({
+      from: payload.from,
+      item: payload.item,
+      items: [...props.modelValue],
+      key: payload.key,
+      to: payload.to,
+    }) ?? true
+
+    if (!allowed) {
+      announcement.value = `Could not move ${getAnnouncementLabel(entry)}.`
+      return
+    }
+
+    const finalEntries = moveEntry(entries.value, entry.index, targetIndex)
+    emit.updateModelValue(finalEntries.map(item => item.element))
+    emit.reorder(payload)
+    announcement.value = `Moved ${getAnnouncementLabel(entry)} from position ${entry.index + 1} to ${targetIndex + 1}.`
+    focusHandleAfterUpdate(entry.key)
+  }
+
+  function getAnnouncementLabel(entry: SortableItemEntry<T>) {
+    return entry.key.trim() || `item ${entry.index + 1}`
+  }
+
+  async function focusHandleAfterUpdate(key: string) {
+    if (!canUseDOM()) return
+
+    await nextTick()
+    getItemHandleElement(key)?.focus()
   }
 
   function resolveOverlayPosition(event: PointerEvent, state: DragState<T>): OverlayPosition {
@@ -652,50 +736,45 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
     }
   }
 
-  function getItemSlotProps(entry: SortableEntry<T>, active = false): SortableItemSlotProps<T> {
-    const attrs: SortableSlotAttrs = {
+  function getListAttrs(): SortableListAttrs {
+    return {
+      [DATA_ATTRIBUTES.list]: '',
+      role: 'list',
+    }
+  }
+
+  function getItemAttrs(entry: SortableItemEntry<T>): SortableItemAttrsResult {
+    const active = overlayState.value?.key === entry.key
+    const attrs: Record<string, unknown> = {
       [DATA_ATTRIBUTES.item]: '',
       [DATA_ATTRIBUTES.itemKey]: entry.key,
       [DATA_ATTRIBUTES.motionKey]: entry.key,
+      'aria-disabled': props.disabled ? 'true' : 'false',
+      'aria-posinset': entry.index + 1,
+      'aria-setsize': entries.value.length,
       'data-vuesortable-active': active ? 'true' : 'false',
       'data-vuesortable-dragging': isSorting.value ? 'true' : 'false',
       'data-vuesortable-disabled': props.disabled ? 'true' : 'false',
       onPointerdown: (event: PointerEvent) => handlePointerDown(event, entry),
+      role: 'listitem',
     }
 
     if (!props.disabled) attrs.style = INTERACTION_STYLE
 
-    return {
-      active,
-      attrs,
-      dragging: isSorting.value,
-      element: entry.element,
-      handleAttrs: getHandleAttrs(entry),
-      index: entry.index,
-    }
+    return { attrs }
   }
 
-  function getOverlayFallbackItemSlotProps(overlay: OverlayState<T>): SortableItemSlotProps<T> {
-    return {
-      active: true,
-      attrs: {
-        [DATA_ATTRIBUTES.overlayItem]: '',
-        'data-vuesortable-active': 'true',
-        'data-vuesortable-dragging': isSorting.value ? 'true' : 'false',
-      },
-      dragging: isSorting.value,
-      element: overlay.element,
-      handleAttrs: {
-        [DATA_ATTRIBUTES.handle]: '',
-      },
-      index: overlay.index,
-    }
-  }
-
-  function getHandleAttrs(entry: SortableEntry<T>): SortableSlotAttrs {
-    const attrs: SortableSlotAttrs = {
+  function getHandleAttrs(entry: SortableItemEntry<T>): Record<string, unknown> {
+    const attrs: Record<string, unknown> = {
       [DATA_ATTRIBUTES.handle]: '',
+      'aria-disabled': props.disabled ? 'true' : 'false',
+      'aria-keyshortcuts': 'ArrowUp ArrowDown ArrowLeft ArrowRight Home End',
+      'aria-label': `Reorder ${getAnnouncementLabel(entry)}`,
+      'aria-roledescription': 'sortable handle',
       onPointerdown: (event: PointerEvent) => handlePointerDown(event, entry, true),
+      onKeydown: (event: KeyboardEvent) => handleKeyboardMove(event, entry),
+      role: 'button',
+      tabindex: props.disabled ? -1 : 0,
     }
 
     if (!props.disabled) attrs.style = INTERACTION_STYLE
@@ -703,13 +782,12 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
     return attrs
   }
 
-  function getPlaceholderSlotProps(entry: SortablePlaceholderEntry): SortablePlaceholderSlotProps {
+  function getPlaceholderAttrs(entry: SortablePlaceholderEntry): SortablePlaceholderAttrsResult {
     return {
       attrs: {
         [DATA_ATTRIBUTES.placeholder]: entry.activeKey,
         [DATA_ATTRIBUTES.motionKey]: entry.key,
       },
-      key: entry.activeKey,
       style: placeholderStyle(entry),
     }
   }
@@ -723,7 +801,10 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
     }
   }
 
-  function getOverlaySlotProps(overlay: OverlayState<T>): SortableOverlaySlotProps<T> {
+  function getOverlayRenderState(): SortableOverlayRenderState<T> | null {
+    const overlay = overlayState.value
+    if (!overlay) return null
+
     return {
       attrs: {
         [DATA_ATTRIBUTES.overlay]: '',
@@ -731,10 +812,24 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
         'data-vuesortable-dragging': isSorting.value ? 'true' : 'false',
         'data-vuesortable-dropping': dropState.value?.dropping ? 'true' : 'false',
       },
-      dragging: isSorting.value,
+      dragging: isDragging.value,
       element: overlay.element,
       index: overlay.index,
+      key: overlay.key,
       style: overlayStyle.value ?? {},
+    }
+  }
+
+  function getDefaultSlotProps(): SortableDefaultSlotProps<T> {
+    return {
+      dragging: isDragging.value,
+      dropping: isDropping.value,
+      entries: layoutEntries.value,
+      getHandleAttrs,
+      getItemAttrs,
+      getPlaceholderAttrs,
+      listAttrs: getListAttrs(),
+      overlay: getOverlayRenderState(),
     }
   }
 
@@ -747,15 +842,19 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
   })
 
   return {
+    announcement,
     entries,
-    getItemSlotProps,
-    getOverlayFallbackItemSlotProps,
-    getOverlaySlotProps,
-    getPlaceholderSlotProps,
+    getDefaultSlotProps,
+    getHandleAttrs,
+    getItemAttrs,
+    getListAttrs,
+    getOverlayRenderState,
+    getPlaceholderAttrs,
     isDragging,
     isDropping,
     isSorting,
     layoutEntries,
+    liveRegionStyle: LIVE_REGION_STYLE,
     overlayState,
     overlayStyle,
     rootStyle: ROOT_STYLE,
@@ -763,7 +862,7 @@ export function useSortableList<T = unknown>(options: UseSortableListOptions<T>)
 }
 
 function buildLayoutEntries<T>(
-  sourceEntries: SortableEntry<T>[],
+  sourceEntries: SortableItemEntry<T>[],
   activeKey: string,
   previewIndex: number,
   activeHeight: number,
@@ -771,7 +870,7 @@ function buildLayoutEntries<T>(
 ) {
   const withoutActive = sourceEntries.filter(entry => entry.key !== activeKey)
   const insertionIndex = clamp(previewIndex, 0, withoutActive.length)
-  const next: SortableLayoutEntry<T>[] = withoutActive.map(entry => ({ ...entry, type: 'item' }))
+  const next: SortableRenderEntry<T>[] = [...withoutActive]
 
   next.splice(insertionIndex, 0, {
     activeKey,
@@ -782,4 +881,13 @@ function buildLayoutEntries<T>(
   })
 
   return next
+}
+
+function moveEntry<T>(sourceEntries: SortableItemEntry<T>[], from: number, to: number) {
+  const next = [...sourceEntries]
+  const [entry] = next.splice(from, 1)
+  if (!entry) return sourceEntries
+
+  next.splice(clamp(to, 0, next.length), 0, entry)
+  return next.map((item, index) => ({ ...item, index }))
 }

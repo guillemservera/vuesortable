@@ -1,6 +1,9 @@
 node_modules
 dist
 .vite
+.nuxt
+.output
 coverage
+.npm-cache
 *.local
 .DS_Store

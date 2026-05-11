@@ -29,25 +29,50 @@ function canMove(payload: SortableCanMovePayload<Item>) {
       v-model="items"
       item-key="id"
       :can-move="canMove"
-      list-class="stack"
+      v-slot="{ entries, listAttrs, getItemAttrs, getHandleAttrs, getPlaceholderAttrs, overlay }"
     >
-      <template #item="{ element, attrs, handleAttrs }">
-        <div
-          v-bind="attrs"
-          class="row"
-          :data-locked="element.locked ? 'true' : 'false'"
+      <div
+        v-bind="listAttrs"
+        class="stack"
+      >
+        <template
+          v-for="entry in entries"
+          :key="entry.key"
         >
-          <button
-            v-bind="handleAttrs"
-            class="handle"
-            type="button"
+          <div
+            v-if="entry.type === 'placeholder'"
+            v-bind="getPlaceholderAttrs(entry).attrs"
+            :style="getPlaceholderAttrs(entry).style"
+          />
+
+          <div
+            v-else
+            v-bind="getItemAttrs(entry).attrs"
+            class="row"
+            :data-locked="entry.element.locked ? 'true' : 'false'"
           >
-            Drag
-          </button>
-          <span>{{ element.label }}</span>
-          <small v-if="element.locked">Locked</small>
-        </div>
-      </template>
+            <button
+              v-bind="getHandleAttrs(entry)"
+              class="handle"
+              type="button"
+            >
+              Drag
+            </button>
+            <span>{{ entry.element.label }}</span>
+            <small v-if="entry.element.locked">Locked</small>
+          </div>
+        </template>
+      </div>
+
+      <div
+        v-if="overlay"
+        v-bind="overlay.attrs"
+        :style="overlay.style"
+        class="row"
+        :data-locked="overlay.element.locked ? 'true' : 'false'"
+      >
+        {{ overlay.element.label }}
+      </div>
     </Sortable>
 
     <p class="message">{{ message }}</p>

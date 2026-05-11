@@ -1,29 +1,31 @@
 # VueSortable
 
-Unstyled sortable primitives for Vue 3.
+Headless-first sortable primitives for Vue 3.
 
-VueSortable is not a SortableJS wrapper. It is a Vue-native sortable primitive.
+VueSortable is not a SortableJS wrapper. It is a Vue-native primitive for single-list reordering where you own the markup, layout, styles, and visual treatment.
 
 ## Status
 
-VueSortable is currently in an early `0.x` release. The core API is usable, but some advanced features such as nested lists, cross-list transfer, virtualized lists, and keyboard reordering are still on the roadmap.
+VueSortable is currently in an early `0.x` release. The `0.1.0` contract is intentionally small: one component, reorder utilities, and public TypeScript types.
+
+Nuxt 4 SSR compatibility is validated with a dedicated fixture under `examples/nuxt-basic`.
 
 ## Why VueSortable?
 
 VueSortable exists for teams that want sortable behavior without adopting a styled component, a DOM-cloning drag library, or SortableJS-specific contracts.
 
-The primitive keeps the dragged item as a local overlay controlled by Vue state. List geometry, placeholder placement, reorder decisions, and optional motion are handled by the component. Visual design stays in userland through slots, classes, and styles you provide.
+The primitive handles sorting state, geometry, pointer events, placeholder placement, local overlay positioning, reorder decisions, keyboard handle behavior, live-region announcements, and optional geometric motion. You render the list and items through the default slot.
 
 ## Features
 
-- Vue 3.5+ component and composable API.
+- Vue 3.5+ component API.
 - Dependency-free runtime, with `vue` as the only peer dependency.
 - Single-list reorder with controlled `v-model`.
 - Vertical and horizontal orientation.
 - Handle and ignore selectors.
-- Local overlay, normal-flow placeholder, and clamped movement.
+- Keyboard reordering through returned handle attrs.
+- Local overlay state and normal-flow placeholder entries.
 - Optional FLIP list motion and snap drop motion.
-- Headless slots for item, overlay, and placeholder rendering.
 - Neutral `data-vuesortable-*` attributes for state and tests.
 - No SortableJS, VueUse, Tailwind, CSS files, or visual classes.
 
@@ -45,9 +47,10 @@ import { ref } from 'vue'
 import { Sortable } from 'vuesortable'
 
 const items = ref([
-  { id: 'drafts', label: 'Drafts' },
-  { id: 'issues', label: 'Issues' },
-  { id: 'inbox', label: 'Inbox' },
+  { id: 'todo', label: 'Todo' },
+  { id: 'doing', label: 'Doing' },
+  { id: 'review', label: 'Review' },
+  { id: 'done', label: 'Done' },
 ])
 </script>
 
@@ -55,22 +58,97 @@ const items = ref([
   <Sortable
     v-model="items"
     item-key="id"
-    orientation="vertical"
-    list-class="space-y-2"
+    orientation="horizontal"
+    v-slot="{
+      entries,
+      listAttrs,
+      getItemAttrs,
+      getHandleAttrs,
+      getPlaceholderAttrs,
+      overlay,
+    }"
   >
-    <template #item="{ element, attrs, handleAttrs }">
-      <div v-bind="attrs">
-        <button v-bind="handleAttrs" type="button">
-          Grab
-        </button>
-        {{ element.label }}
-      </div>
-    </template>
+    <div
+      v-bind="listAttrs"
+      class="lane"
+    >
+      <template
+        v-for="entry in entries"
+        :key="entry.key"
+      >
+        <div
+          v-if="entry.type === 'placeholder'"
+          v-bind="getPlaceholderAttrs(entry).attrs"
+          :style="getPlaceholderAttrs(entry).style"
+        />
+
+        <div
+          v-else
+          v-bind="getItemAttrs(entry).attrs"
+          class="pill"
+        >
+          <button
+            v-bind="getHandleAttrs(entry)"
+            type="button"
+          >
+            Grab
+          </button>
+
+          {{ entry.element.label }}
+        </div>
+      </template>
+    </div>
+
+    <div
+      v-if="overlay"
+      v-bind="overlay.attrs"
+      :style="overlay.style"
+      class="pill"
+    >
+      {{ overlay.element.label }}
+    </div>
   </Sortable>
 </template>
+
+<style scoped>
+.lane {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
+}
+
+.pill {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 120px;
+  justify-content: center;
+  min-height: 72px;
+}
+</style>
 ```
 
-## API
+Scoped CSS works naturally because the list is rendered by your component, not by VueSortable. There is no `listClass` API.
+
+## Nuxt and SSR
+
+VueSortable is designed to work with Nuxt 4 and SSR.
+
+No Nuxt plugin is required. You should not need `<ClientOnly>` for normal usage: the list can render on the server, and drag interactions activate in the browser after hydration.
+
+Use `<ClientOnly>` only when your own item markup renders browser-only components or accesses browser-only APIs during render.
+
+## Public API
+
+`src/index.ts` exposes:
+
+```ts
+export { default as Sortable } from './components/Sortable.vue'
+export { reorderItems, moveItem } from './utils/reorder'
+export type * from './types'
+```
+
+`useSortableList` is internal and is not part of the public package contract.
 
 ### Props
 
@@ -86,10 +164,10 @@ const items = ref([
 | `activation` | `{ threshold?: number, delay?: number, delayOnTouchOnly?: boolean }` | `{ threshold: 4 }` |
 | `handle` | `string` | `undefined` |
 | `ignore` | `string` | `button,input,textarea,select,a,[contenteditable="true"],[data-sortable-ignore]` |
-| `motion` | `false \| SortableMotionConfig` | FLIP list and snap drop motion |
+| `motion` | `false \| SortableMotion` | FLIP list and snap drop motion |
 | `canMove` | `(payload: SortableCanMovePayload<T>) => boolean` | `undefined` |
-| `class` | `unknown` | `undefined` |
-| `listClass` | `unknown` | `undefined` |
+
+`class` and `style` are normal Vue attrs and are applied to the root element. They are not typed as props.
 
 `behavior` is intentionally limited to `insert` in `0.1.0`. Swap behavior is reserved for a future release.
 
@@ -106,48 +184,40 @@ const items = ref([
 
 `reorder` is emitted only when the model changes. `drag-end` is emitted after an active drag ends, even if the item returns to its original position.
 
-### Slots
+### Default Slot
 
-#### `item`
+The default slot is the rendering contract. Bind the provided attrs to your list, item, handle, placeholder, and overlay elements.
 
-```ts
-{
-  element: T
-  index: number
-  active: boolean
-  dragging: boolean
-  attrs: Record<string, unknown>
-  handleAttrs: Record<string, unknown>
-}
-```
+| Property | Description |
+| --- | --- |
+| `entries` | Render entries including normal items and the active placeholder. |
+| `dragging` | `true` while pointer dragging is active. |
+| `dropping` | `true` while drop motion is active. |
+| `listAttrs` | Attributes to bind to your list container. |
+| `getItemAttrs(entry)` | Attributes for an item entry. |
+| `getHandleAttrs(entry)` | Attributes for a drag handle. |
+| `getPlaceholderAttrs(entry)` | Attributes and structural style for the placeholder. |
+| `overlay` | Overlay render state, or `null`. |
 
-Bind `attrs` to the element that represents the sortable item. Bind `handleAttrs` to a drag handle when you want one.
+The old `item`, `overlay`, and `placeholder` named slots are not part of the `0.1.0` contract.
 
-#### `overlay`
+## Accessibility
 
-```ts
-{
-  element: T
-  index: number
-  dragging: boolean
-  attrs: Record<string, unknown>
-  style: CSSProperties
-}
-```
+VueSortable returns accessibility attrs as part of the headless contract:
 
-The overlay slot is optional. If omitted, VueSortable reuses the `item` slot inside the structural overlay wrapper.
+- `listAttrs` includes list semantics.
+- `getItemAttrs(entry).attrs` includes item semantics, position metadata, disabled state, and pointer handlers.
+- `getHandleAttrs(entry)` includes handle semantics, keyboard shortcuts, disabled state, focusability, and keyboard reorder handlers.
+- A hidden live region announces keyboard moves and blocked keyboard moves.
 
-#### `placeholder`
+You can override accessible names by binding `getHandleAttrs(entry)` first and then providing your own `aria-label` on the handle.
 
-```ts
-{
-  key: string
-  attrs: Record<string, unknown>
-  style: CSSProperties
-}
-```
+Keyboard shortcuts on the handle:
 
-The placeholder slot is optional. If omitted, VueSortable renders an empty structural placeholder that preserves the active item's width and height.
+- `ArrowDown` / `ArrowRight`: move the item one position later.
+- `ArrowUp` / `ArrowLeft`: move the item one position earlier.
+- `Home`: move the item to the start.
+- `End`: move the item to the end.
 
 ## Motion
 
@@ -172,31 +242,37 @@ Disable all motion with:
 
 ## Styling
 
-VueSortable does not ship CSS and does not impose visual classes. It only uses structural inline styles needed for geometry, such as `position`, `width`, `height`, `transform`, `pointerEvents`, and `touchAction`.
+VueSortable does not ship CSS and does not impose visual classes. It only uses structural inline styles needed for geometry, interaction, overlay positioning, placeholder sizing, optional motion, and the hidden live region.
 
-Use your own classes, attributes, and slot markup:
+You own all visual styling:
 
 ```vue
-<Sortable v-model="items" item-key="id" class="board" list-class="board-list">
-  <template #item="{ element, attrs }">
-    <article v-bind="attrs" class="task-card">
-      {{ element.label }}
-    </article>
-  </template>
+<Sortable v-model="items" item-key="id" v-slot="{ entries, listAttrs, getItemAttrs, getPlaceholderAttrs }">
+  <div v-bind="listAttrs" class="board-list">
+    <template v-for="entry in entries" :key="entry.key">
+      <div
+        v-if="entry.type === 'placeholder'"
+        v-bind="getPlaceholderAttrs(entry).attrs"
+        :style="getPlaceholderAttrs(entry).style"
+      />
+
+      <article
+        v-else
+        v-bind="getItemAttrs(entry).attrs"
+        class="task-card"
+      >
+        {{ entry.element.label }}
+      </article>
+    </template>
+  </div>
 </Sortable>
 ```
-
-## Accessibility Status
-
-The current release focuses on pointer-driven single-list reordering. Native button handles work well with custom UI, but keyboard reordering helpers and higher-level accessibility patterns are still roadmap items.
-
-For now, provide clear handle labels, preserve focusable controls inside your item slot, and avoid hiding the current order from assistive technology.
 
 ## Comparison with VueUse useSortable / Vue.Draggable
 
 VueUse `useSortable` integrates SortableJS into Vue composables. Vue.Draggable is also built around SortableJS.
 
-VueSortable takes a different approach: it is a Vue-native primitive with local overlay rendering, Vue-controlled state, and no runtime dependency beyond Vue itself. It is lower-level by design, so it can fit custom UI systems without bringing visual styles or SortableJS behavior contracts.
+VueSortable takes a different approach: it is a Vue-native primitive with local overlay rendering, Vue-controlled state, and no runtime dependency beyond Vue itself. It is lower-level by design, so it can fit custom UI systems without bringing visual styles, global CSS, or SortableJS behavior contracts.
 
 ## Limitations
 
@@ -204,12 +280,12 @@ VueSortable takes a different approach: it is a Vue-native primitive with local 
 - No nested lists yet.
 - No cross-list transfer yet.
 - No virtualized lists yet.
-- Keyboard reordering and accessibility helpers are early and on the roadmap.
+- No multi-select reorder yet.
 - The API is `0.x` and may change before `1.0`.
 
 ## Roadmap
 
-- Keyboard reorder helpers.
+- Higher-level accessibility examples and guidance.
 - Cross-list transfer primitives.
 - Nested list guidance.
 - Virtualized list integration notes.
@@ -224,6 +300,12 @@ pnpm dev
 ```
 
 The playground lives in `playground/` and is not published to npm. It imports VueSortable with the public package name, `vuesortable`; the playground Vite config aliases that name to `src/index.ts` so local development works before `dist/` exists.
+
+The Nuxt 4 SSR fixture lives in `examples/nuxt-basic/`. It consumes VueSortable through the workspace package entry and is validated with:
+
+```bash
+pnpm test:nuxt
+```
 
 ## Examples
 

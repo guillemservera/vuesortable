@@ -14,16 +14,40 @@ const items = ref([
     v-model="items"
     item-key="id"
     orientation="horizontal"
-    list-class="sortable-row"
+    v-slot="{ entries, listAttrs, getItemAttrs, getPlaceholderAttrs, overlay }"
   >
-    <template #item="{ element, attrs }">
-      <div
-        v-bind="attrs"
-        class="sortable-chip"
+    <div
+      v-bind="listAttrs"
+      class="sortable-row"
+    >
+      <template
+        v-for="entry in entries"
+        :key="entry.key"
       >
-        {{ element.label }}
-      </div>
-    </template>
+        <div
+          v-if="entry.type === 'placeholder'"
+          v-bind="getPlaceholderAttrs(entry).attrs"
+          :style="getPlaceholderAttrs(entry).style"
+        />
+
+        <div
+          v-else
+          v-bind="getItemAttrs(entry).attrs"
+          class="sortable-chip"
+        >
+          {{ entry.element.label }}
+        </div>
+      </template>
+    </div>
+
+    <div
+      v-if="overlay"
+      v-bind="overlay.attrs"
+      :style="overlay.style"
+      class="sortable-chip"
+    >
+      {{ overlay.element.label }}
+    </div>
   </Sortable>
 </template>
 
